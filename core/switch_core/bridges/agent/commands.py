@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import random
+import re
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -258,6 +259,28 @@ _CONTROL_BODIES: dict[str, dict[str, str]] = {
     "interrupt": {"type": "turn.interrupt", "turnId": CURRENT},
 }
 
+_CANCEL_USAGE = "Usage: `!cancel @agent-name <turn-id>`. Copy the turn ID from the queued activity card."
+
+
+def _cancel_turn_id(args: str) -> str | None:
+    parts = args.split()
+    if len(parts) != 2 or not parts[0].startswith("@") or not _mention_tokens(parts[0]):
+        return None
+    return (
+        parts[1]
+        if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,199}", parts[1])
+        else None
+    )
+
+
+async def _check_cancel_target(
+    host: CommandConsumer, room: RoomRef, event: CommandEvent, meta: RoomMeta
+) -> None:
+    if _cancel_turn_id(event.args) is None:
+        await _reply(host, room, event, _CANCEL_USAGE)
+        return
+    await _check_control_target(host, room, event, meta)
+
 
 def room_control_frame(
     *,
@@ -270,6 +293,7 @@ def room_control_frame(
     thread_id: str | None,
     surface: str,
     requester_name: str,
+    turn_id: str | None = None,
 ) -> dict[str, object]:
     """The `session_command` frame a room control is relayed as.
 
@@ -279,6 +303,8 @@ def room_control_frame(
     picks the session from the room.
     """
     body = _CONTROL_BODIES.get(action)
+    if action == "cancel" and turn_id:
+        body = {"type": "turn.cancel", "turnId": turn_id}
     if body is None:
         raise ValueError(f"{action} is not a room control")
     frame = _control_frame(
@@ -462,6 +488,9 @@ async def _decide_control_command(
 
         return ControlDecision(queued=None, answer=answer)
 
+    if command == "cancel" and _cancel_turn_id(event.args) is None:
+        return say(_CANCEL_USAGE)
+
     async with client.session_factory() as session:
         agent = await client._fresh_agent(session)
     meta = await client._resolve_room_meta(room.room_id)
@@ -490,6 +519,7 @@ async def _decide_control_command(
             thread_id=event.thread_id,
             surface=await _room_surface(client, meta.room_id),
             requester_name=event.user_name,
+            turn_id=_cancel_turn_id(event.args) if command == "cancel" else None,
         )
 
         async def relay() -> None:
@@ -670,6 +700,26 @@ async def _decide_interrupt(
     client: AgentRecipient, room: RoomRef, event: CommandEvent
 ) -> ControlDecision:
     return await _decide_control_command(client, room, event, "interrupt", _INTERRUPT)
+
+
+_CANCEL = ControlTexts(
+    ack="Requesting cancellation of the queued message…",
+    unsupported="Queued messages can only be cancelled in a Switch session host.",
+    no_live_session="There is no active session in this room with a queue to cancel from.",
+    no_session="This session does not support cancelling queued messages.",
+)
+
+
+async def _cmd_cancel(
+    client: AgentRecipient, room: RoomRef, event: CommandEvent, _is_direct: bool
+) -> None:
+    await _dispatch_control_command(client, room, event, "cancel", _CANCEL)
+
+
+async def _decide_cancel(
+    client: AgentRecipient, room: RoomRef, event: CommandEvent
+) -> ControlDecision:
+    return await _decide_control_command(client, room, event, "cancel", _CANCEL)
 
 
 async def _cmd_list_room_agents(
@@ -1880,6 +1930,21 @@ COMMANDS: list[Command] = [
         ),
         addressed=_addressed_by_required_first_mention,
         admin_check=_check_control_target,
+    ),
+    Command(
+        "cancel",
+        "Cancel one message you sent that is still queued for an agent. "
+        + _CANCEL_USAGE,
+        _cmd_cancel,
+        decide=_decide_cancel,
+        args_spec=(
+            CommandArg("target", "Agent name, alias, or role", required=True),
+            CommandArg(
+                "turn_id", "The queued message's turn ID", required=True, free_text=True
+            ),
+        ),
+        addressed=_addressed_by_required_first_mention,
+        admin_check=_check_cancel_target,
     ),
     Command(
         "interrupt-all-agents",

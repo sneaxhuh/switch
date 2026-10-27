@@ -245,11 +245,13 @@ class SessionUpsert(_Model):
 class TurnUpsert(_Model):
     type: Literal["turn.upsert"]
     turn_id: Id
-    status: Literal["queued", "running", "completed", "interrupted", "error"]
+    status: Literal[
+        "queued", "running", "completed", "interrupted", "cancelled", "error"
+    ]
     command_id: Id | None
 
 
-TURN_ENDED = frozenset({"completed", "interrupted", "error"})
+TURN_ENDED = frozenset({"completed", "interrupted", "cancelled", "error"})
 
 
 class ItemUpsert(_Model):
@@ -369,6 +371,11 @@ class TurnInterrupt(_Model):
     turn_id: Id
 
 
+class TurnCancel(_Model):
+    type: Literal["turn.cancel"]
+    turn_id: Id
+
+
 class SessionStop(_Model):
     type: Literal["session.stop"]
 
@@ -391,6 +398,7 @@ CommandBody = Annotated[
     MessageSend
     | RequestAnswer
     | TurnInterrupt
+    | TurnCancel
     | SessionStop
     | SessionReset
     | SessionCompact

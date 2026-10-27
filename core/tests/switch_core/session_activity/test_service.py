@@ -200,6 +200,18 @@ async def test_usage_on_a_turn_that_has_not_ended_is_refused(service):
         )
 
 
+async def test_a_queued_message_can_be_reported_as_cancelled(service):
+    assert await service.report_item(
+        AGENT, SESSION, **_turn("cancelled-turn", 1, "queued")
+    )
+    assert await service.report_item(
+        AGENT, SESSION, **_turn("cancelled-turn", 2, "cancelled")
+    )
+    assert not await service.report_item(
+        AGENT, SESSION, **_turn("cancelled-turn", 2, "cancelled")
+    )
+
+
 async def test_a_turns_steps_are_read_in_the_order_first_reported(service):
     for item_id, kind, status in [
         ("turn", "turn", "running"),

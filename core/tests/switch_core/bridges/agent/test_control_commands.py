@@ -17,6 +17,71 @@ from switch_core.bridges.agent.protocol.types import AgentStatus
 from switch_core.events import CommandEvent
 
 
+@pytest.mark.asyncio
+async def test_cancel_relays_the_exact_turn_and_verified_sender(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reply = _Reply()
+    relayed: list[Any] = []
+    monkeypatch.setattr(commands, "_reply", reply)
+
+    async def surface(*_args: Any) -> str:
+        return "slack"
+
+    monkeypatch.setattr(commands, "_room_surface", surface)
+    event = _event("cancel").model_copy(update={"args": "@cc queued-turn"})
+    await commands._cmd_cancel(
+        _client(
+            reply,
+            command_level="unsupported",
+            enqueue=[],
+            placed="session-1",
+            relayed=relayed,
+        ),
+        SimpleNamespace(room_id="!m:server"),
+        event,
+        False,
+    )
+    [frame] = relayed
+    assert frame["body"] == {"type": "turn.cancel", "turnId": "queued-turn"}
+    assert frame["origin"]["actorId"] == event.user_id
+    assert frame["origin"]["roomId"] == "room-1"
+    assert reply.bodies == ["Requesting cancellation of the queued message…"]
+
+
+@pytest.mark.parametrize(
+    "args", ["", "@cc", "queued-turn", "@cc queued-turn extra", "@cc @other"]
+)
+@pytest.mark.asyncio
+async def test_cancel_requires_an_explicit_target_and_turn_id(
+    monkeypatch: pytest.MonkeyPatch, args: str
+) -> None:
+    reply = _Reply()
+    relayed: list[Any] = []
+    monkeypatch.setattr(commands, "_reply", reply)
+    await commands._cmd_cancel(
+        _client(
+            reply,
+            command_level="unsupported",
+            enqueue=[],
+            placed="session-1",
+            relayed=relayed,
+        ),
+        SimpleNamespace(room_id="!m:server"),
+        _event("cancel").model_copy(update={"args": args}),
+        False,
+    )
+    assert not relayed
+    assert reply.bodies == [commands._CANCEL_USAGE]
+
+
+@pytest.mark.asyncio
+async def test_bare_cancel_addresses_no_agents() -> None:
+    assert not await commands.COMMANDS_BY_NAME["cancel"].addressed(
+        SimpleNamespace(), "", "room-1"
+    )
+
+
 def _event(command: str = "reset") -> CommandEvent:
     return CommandEvent(
         command=command,

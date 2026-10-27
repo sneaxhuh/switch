@@ -73,7 +73,9 @@ MAX_APPROVAL_LIFETIME = timedelta(hours=24)
 NOTICE_PREFIX = "notice:"
 
 ITEM_STATUSES: dict[str, frozenset[str]] = {
-    "turn": frozenset({"queued", "running", "completed", "interrupted", "error"}),
+    "turn": frozenset(
+        {"queued", "running", "completed", "interrupted", "cancelled", "error"}
+    ),
     "user-message": frozenset({"in-progress", "completed", "failed", "declined"}),
     "assistant-message": frozenset({"in-progress", "completed", "failed", "declined"}),
     "tool-activity": frozenset({"in-progress", "completed", "failed", "declined"}),

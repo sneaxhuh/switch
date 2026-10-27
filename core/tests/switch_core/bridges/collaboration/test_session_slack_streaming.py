@@ -31,6 +31,7 @@ the turn, and falls back visibly to an ordinary post everywhere else.
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 
@@ -76,6 +77,26 @@ def _turn(status: str = "running") -> TurnUpsert:
     return TurnUpsert.model_validate(
         {"type": "turn.upsert", "turnId": TURN, "status": status, "commandId": None}
     )
+
+
+async def test_queued_stream_replaces_its_cancel_hint_when_the_turn_ends() -> None:
+    client = FakeWebClient()
+    adapter = _adapter(client)
+    command = f"!cancel @helper {TURN}"
+    ref = await adapter.post_rich(
+        CHANNEL,
+        "helper",
+        TurnActivity([], _turn("queued"), cancel_command=command),
+        THREAD,
+    )
+    assert command in json.dumps(_drawn(client))
+    await adapter.update_rich(
+        CHANNEL, "helper", ref, TurnActivity([], _turn("cancelled")), THREAD
+    )
+    drawn = json.dumps(_drawn(client))
+    assert command not in drawn
+    assert "no longer queued" in drawn
+    assert "cancelled" in drawn
 
 
 def _tool(
