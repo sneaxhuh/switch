@@ -36,7 +36,7 @@ export type Item = {
   itemId: Id;
   turnId: Id;
   revision: number;
-  kind: 'user-message' | 'assistant-message' | 'tool-activity';
+  kind: 'user-message' | 'assistant-message' | 'tool-activity' | 'subagent';
   status: 'in-progress' | 'completed' | 'failed' | 'declined';
   title: string;
   text: string;

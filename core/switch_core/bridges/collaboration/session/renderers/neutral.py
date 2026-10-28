@@ -65,6 +65,7 @@ from . import (
     turn_state,
     unanswerable,
 )
+from .subagents import subagent_lines
 
 _CONSOLE = "Open in Switch Console"
 
@@ -240,6 +241,13 @@ def turn_summary(
     still going.
     """
     state = turn_state(items, turn, tool_detail=True)
+    children = subagent_lines(
+        items, turn, fit=lambda text, size: _fit(text, size, escape=escape)
+    )
+    for line in children:
+        if len(state) + len(line) + 1 > limit:
+            break
+        state += f"\n{line}"
     said = [item for item in items if item.kind == "assistant-message"]
     if not said:
         return _truncate(state, limit)
@@ -312,6 +320,13 @@ def turn_status(
 
     lines = [head]
     spent = len(head)
+    for line in subagent_lines(
+        items, turn, fit=lambda text, size: _fit(text, size, escape=escape)
+    ):
+        if spent + len(line) + 1 > budget:
+            break
+        lines.append(line)
+        spent += len(line) + 1
     did = [item for item in items if item.kind == "tool-activity"]
     for line in _doing(
         did, turn, escape=escape, budget=budget, tool_detail=tool_detail
@@ -384,7 +399,7 @@ def in_activity_log(item: Item) -> bool:
     a host opens the item before the first token arrives, and a marker with
     nothing after it is a line that tells a reader less than no line at all.
     """
-    if item.kind == "tool-activity":
+    if item.kind in ("tool-activity", "subagent"):
         return True
     return item.kind == "assistant-message" and bool(item.text)
 
@@ -400,7 +415,8 @@ def _log_line(item: Item, *, escape: Callable[[str], str]) -> str:
         said = _fit(" ".join(item.text.split()), _LOG_SAID_TEXT, escape=escape)
         return f"{SAID_MARKER} {said}"
     title = _fit(item.title, _LOG_TITLE, escape=escape) if item.title else _LOG_UNTITLED
-    line = f"{_TOOL_MARKER} {_OUTCOME[item.status]} {title}"
+    marker = "Subagent" if item.kind == "subagent" else _TOOL_MARKER
+    line = f"{marker} {_OUTCOME[item.status]} {title}"
     if item.text:
         line += f" — {_fit(item.text, _LOG_DETAIL, escape=escape)}"
     return line

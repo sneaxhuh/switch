@@ -935,3 +935,61 @@ describe('CodexAdapter connector tools', () => {
     }
   );
 });
+
+it('keeps child completion on its original turn when a later turn waits for it', async () => {
+  const { adapter, server, events } = await start();
+  let native = 'native-first';
+  server.replyAlways('turn/start', () => ({ turn: { id: native, status: 'inProgress' } }));
+  await adapter.sendTurn({ sessionId: 'session-1', turnId: 'first', text: 'delegate' });
+  server.notify('turn/started', turnNotification(native, 'inProgress'));
+  server.notify('item/completed', {
+    threadId: THREAD,
+    turnId: native,
+    item: {
+      type: 'collabAgentToolCall',
+      id: 'spawn',
+      tool: 'spawnAgent',
+      status: 'completed',
+      senderThreadId: THREAD,
+      receiverThreadIds: ['child'],
+      prompt: 'Review changes',
+      agentsStates: { child: { status: 'running' } },
+    },
+  });
+  await vi.waitFor(() =>
+    expect(
+      eventsOf(events, 'item.updated').some((event) => event.item.nativeChildId === 'child')
+    ).toBe(true)
+  );
+  expect(
+    eventsOf(events, 'item.updated').find((event) => event.item.nativeChildId === 'child')
+  ).toMatchObject({ turnId: 'first', item: { status: 'in_progress' } });
+  server.notify('turn/completed', turnNotification(native, 'completed'));
+  await vi.waitFor(() => expect(eventsOf(events, 'turn.completed')).toHaveLength(1));
+  native = 'native-second';
+  await adapter.sendTurn({ sessionId: 'session-1', turnId: 'second', text: 'wait' });
+  server.notify('turn/started', turnNotification(native, 'inProgress'));
+  server.notify('item/completed', {
+    threadId: THREAD,
+    turnId: native,
+    item: {
+      type: 'collabAgentToolCall',
+      id: 'wait',
+      tool: 'wait',
+      status: 'completed',
+      senderThreadId: THREAD,
+      receiverThreadIds: ['child'],
+      prompt: null,
+      agentsStates: { child: { status: 'completed' } },
+    },
+  });
+  await vi.waitFor(() =>
+    expect(
+      eventsOf(events, 'item.completed').some((event) => event.item.nativeChildId === 'child')
+    ).toBe(true)
+  );
+  expect(
+    eventsOf(events, 'item.completed').find((event) => event.item.nativeChildId === 'child')
+  ).toMatchObject({ turnId: 'first', item: { status: 'completed' } });
+  await adapter.stopAll();
+});

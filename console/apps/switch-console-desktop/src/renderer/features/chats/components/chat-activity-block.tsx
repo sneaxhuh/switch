@@ -4,7 +4,14 @@ import { AgentAvatar } from '@renderer/lib/components/agent-avatar';
 import { cn } from '@renderer/utils/utils';
 import type { ChatActivityItem, ChatApproval } from '@shared/core/chats/activity';
 import { reasoningLabel } from '@shared/core/sessions/reasoning';
-import { isThinking, toolState, type TurnActivity, turnTools } from '../activity-join';
+import {
+  isThinking,
+  subagentStatus,
+  toolState,
+  type TurnActivity,
+  turnSubagents,
+  turnTools,
+} from '../activity-join';
 import type { AgentActivity } from '../stores/chat-activity-store';
 import { presentTool, summarizeTools } from '../tool-presentation';
 import { Reasoning } from '../ui/reasoning';
@@ -135,6 +142,7 @@ export function turnShown(activity: AgentActivity, turn: TurnActivity): boolean 
   return (
     reasoningLabel(reasoning, running && reasoning !== null) !== null ||
     work.length > 0 ||
+    turnSubagents(turn).length > 0 ||
     isThinking(turn) ||
     turn.status === 'interrupted' ||
     turn.status === 'error' ||
@@ -173,6 +181,7 @@ export const ChatActivityBlock = observer(function ChatActivityBlock({
   const label = reasoningLabel(reasoning, running && reasoning !== null);
   const work = turnTools(turn);
   const thinking = isThinking(turn) && !(label && !reasoning?.completedAt);
+  const children = turnSubagents(turn);
   const ended = turn.status === 'interrupted' || turn.status === 'error';
   const requests = turn.requests;
   if (!turnShown(activity, turn)) return null;
@@ -195,6 +204,21 @@ export const ChatActivityBlock = observer(function ChatActivityBlock({
         <ToolGroup items={work} turn={turn} activity={activity} />
       ) : (
         <ToolRows items={work} turn={turn} activity={activity} />
+      )}
+      {children.slice(0, 5).map((child) => (
+        <WorkLogRow
+          key={child.itemId}
+          icon={<ToolKindIcon kind="agent" />}
+          label={`Subagent: ${child.title}`}
+          trailing={<span className="shrink-0 text-xs">{subagentStatus(child, turn.status)}</span>}
+          active={subagentStatus(child, turn.status) === 'running'}
+          tone={child.status === 'failed' ? 'failed' : 'default'}
+        />
+      ))}
+      {children.length > 5 && (
+        <div className="text-xs text-foreground-muted">
+          …{children.length - 5} more subagents not shown.
+        </div>
       )}
       {thinking && (
         <WorkLogRow

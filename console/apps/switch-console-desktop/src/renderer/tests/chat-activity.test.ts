@@ -4,6 +4,8 @@ import {
   foldTurnEndNotices,
   groupTurns,
   isThinking,
+  subagentStatus,
+  turnSubagents,
   placeTurns,
   toolState,
   type TurnActivity,
@@ -813,5 +815,20 @@ describe('AgentActivities', () => {
     expect(asked).toEqual([['t1']]);
     expect(activity.toolDetails.get(tool.itemId)).toEqual(tool);
     activities.release(activity);
+  });
+});
+
+describe('child activity', () => {
+  it('keeps children separate from tools, prioritizes live children and avoids false thinking', () => {
+    const done = row('t1', 'child-a', { kind: 'subagent', status: 'completed', title: 'Review' });
+    const live = row('t1', 'child-b', { kind: 'subagent', status: 'in-progress', title: 'Test' });
+    const turn = turnOf([done, live], 'running');
+    expect(turnSubagents(turn).map((item) => item.itemId)).toEqual(['child-b', 'child-a']);
+    expect(turnTools(turn)).toEqual([]);
+    expect(isThinking(turn)).toBe(false);
+    expect(subagentStatus(done, 'completed')).toBe('done');
+    expect(subagentStatus(live, 'running')).toBe('running');
+    expect(subagentStatus(live, 'completed')).toBe('not confirmed finished');
+    expect(subagentStatus(live, 'interrupted')).toBe('not confirmed finished');
   });
 });

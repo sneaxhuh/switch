@@ -41,7 +41,7 @@ const item = z.strictObject({
   itemId: id,
   turnId: id,
   revision,
-  kind: z.enum(['user-message', 'assistant-message', 'tool-activity']),
+  kind: z.enum(['user-message', 'assistant-message', 'tool-activity', 'subagent']),
   status: z.enum(['in-progress', 'completed', 'failed', 'declined']),
   title: z.string(),
   text: z.string(),

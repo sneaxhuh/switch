@@ -34,7 +34,7 @@ import {
 } from '../transport/stdio-json-rpc';
 import { CumulativeUsage, mergeUsage, type UsageCounts } from '../usage';
 import { featureArgs, mcpServerConfigArgs, tomlString } from './config-args';
-import { mapCodexItem } from './item-mapping';
+import { mapCodexChildren, mapCodexItem } from './item-mapping';
 import {
   CODEX_CLIENT_METHODS,
   CODEX_CLIENT_NOTIFICATIONS,
@@ -124,6 +124,7 @@ interface CodexSessionState {
   approvals: Map<string, PendingApproval>;
   userInputs: Map<string, PendingUserInput>;
   items: Map<string, CodexThreadItem>;
+  childTurns: Map<string, string>;
   deltaBuffers: Map<string, string>;
   stopping: boolean;
   exited: boolean;
@@ -387,6 +388,7 @@ export class CodexAdapter implements ProviderAdapter {
       approvals: new Map(),
       userInputs: new Map(),
       items: new Map(),
+      childTurns: new Map(),
       deltaBuffers: new Map(),
       stopping: false,
       exited: false,
@@ -810,6 +812,8 @@ export class CodexAdapter implements ProviderAdapter {
         item: mapCodexItem(payload.item, 'started'),
         raw: { source: CODEX_SERVER_NOTIFICATIONS.itemStarted, payload },
       });
+      for (const item of mapCodexChildren(payload.item))
+        this.emit(state, { type: 'item.updated', turnId, item });
     });
 
     client.onNotification(CODEX_SERVER_NOTIFICATIONS.itemCompleted, (params) => {
@@ -825,6 +829,12 @@ export class CodexAdapter implements ProviderAdapter {
         item: mapCodexItem(payload.item, 'completed'),
         raw: { source: CODEX_SERVER_NOTIFICATIONS.itemCompleted, payload },
       });
+      for (const item of mapCodexChildren(payload.item))
+        this.emit(state, {
+          type: item.status === 'in_progress' ? 'item.updated' : 'item.completed',
+          turnId,
+          item,
+        });
     });
 
     client.onNotification(CODEX_SERVER_NOTIFICATIONS.agentMessageDelta, (params) => {
@@ -1096,6 +1106,18 @@ export class CodexAdapter implements ProviderAdapter {
   }
 
   private emit(state: CodexSessionState, event: EmittableEvent): void {
+    if (
+      (event.type === 'item.started' ||
+        event.type === 'item.updated' ||
+        event.type === 'item.completed') &&
+      event.item.type === 'subagent' &&
+      event.item.nativeChildId
+    ) {
+      const childId = event.item.nativeChildId;
+      const turnId = state.childTurns.get(childId) ?? event.turnId;
+      state.childTurns.set(childId, turnId);
+      event = { ...event, turnId };
+    }
     const full = {
       eventId: randomUUID(),
       provider: PROVIDER,

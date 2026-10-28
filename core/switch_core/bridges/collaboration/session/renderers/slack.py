@@ -63,6 +63,21 @@ from . import (
     unanswerable,
 )
 from .neutral import SAID_MARKER, in_activity_log
+from .subagents import subagent_lines
+
+
+def _subagent_blocks(items: list[Item], turn: TurnUpsert) -> list[dict[str, Any]]:
+    lines = subagent_lines(items, turn, fit=lambda text, size: _fit(text, size))
+    if not lines:
+        return []
+    return [
+        {
+            "type": "section",
+            "block_id": "switch-subagents",
+            "text": {"type": "mrkdwn", "text": "\n".join(lines)},
+        }
+    ]
+
 
 # Slack's own limits. Exceeding one is rejected at the API, so it is caught here
 # where the offending value can still be named.
@@ -1048,10 +1063,13 @@ def render_activity(
                         "task_id": _task_id(turn.turn_id),
                         "title": _truncate(state, _MAX_PLAN_TASK_TITLE),
                         "status": "in_progress",
-                    }
+                    },
+                    *_subagent_blocks(items, turn),
                 ],
             )
-        return SlackMessage(text=state, blocks=[_context(state)])
+        return SlackMessage(
+            text=state, blocks=[_context(state), *_subagent_blocks(items, turn)]
+        )
     said = [item for item in items if item.kind == "assistant-message"]
     did = [item for item in items if item.kind == "tool-activity"]
 
@@ -1070,6 +1088,7 @@ def render_activity(
             items, turn, tool_detail=True, elapsed_seconds=elapsed_seconds
         )
         blocks.append(_context(f"_{state}_"))
+    blocks.extend(_subagent_blocks(items, turn))
     return SlackMessage(
         text=render_activity_text(items, turn, elapsed_seconds=elapsed_seconds),
         blocks=blocks,
@@ -1133,6 +1152,7 @@ def render_activity_text(
         lines.append(f"…{hidden} earlier in this turn, not shown.")
     lines += [_message_text(item) for item in said[len(said) - _MAX_MESSAGES :]]
     lines += _activity_lines(did)
+    lines += subagent_lines(items, turn, fit=lambda text, size: _fit(text, size))
     lines.append(
         turn_state(items, turn, tool_detail=True, elapsed_seconds=elapsed_seconds)
     )
@@ -1238,6 +1258,7 @@ def render_activity_plan(
     control = _interrupt_block(interrupt_turn_id, turn, STREAM_SLOTS[len(blocks)])
     if control is not None:
         blocks.append(control)
+    blocks.extend(_subagent_blocks(items, turn))
     return SlackMessage(text=title, blocks=blocks)
 
 
@@ -1306,6 +1327,7 @@ def render_activity_stream(
     title = blocks[-1]["title"]
     slot = STREAM_SLOTS[len(blocks)]
     control = _interrupt_block(interrupt_turn_id, turn, slot)
+    blocks.extend(_subagent_blocks(items, turn))
     if control is None:
         return StreamedActivity(
             title=title, blocks=blocks, spent_control=_spent_control(slot)
@@ -1675,6 +1697,8 @@ def _plan_task(item: Item) -> dict[str, Any]:
             "details": _rich_text(_truncate_prose(item.text, _MAX_SAID_DETAILS)),
         }
     title = plain_text(item.title) if item.title else ""
+    if item.kind == "subagent":
+        title = f"Subagent: {title}"
     if item.status in ("failed", "declined"):
         title = f"{_ACTIVITY[item.status]} {title}".strip()
     task: dict[str, Any] = {

@@ -114,7 +114,7 @@ class Item(_Model):
     item_id: Id
     turn_id: Id
     revision: Counter
-    kind: Literal["user-message", "assistant-message", "tool-activity"]
+    kind: Literal["user-message", "assistant-message", "tool-activity", "subagent"]
     status: Literal["in-progress", "completed", "failed", "declined"]
     title: str
     text: str
