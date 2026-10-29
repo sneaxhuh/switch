@@ -685,7 +685,9 @@ class CollaborationBridgeLifecycleService:
         )
         adapter_cls = self._adapter_registry.get(bridge_type)
         if adapter_cls is not None:
-            await adapter_cls.verify_credentials(connection_config)
+            await adapter_cls.verify_connection(
+                connection_config, self._config.outbound_policy
+            )
 
     async def start_all(self) -> None:
         # Every tenant's active bridges, read one tenant at a time. Which
@@ -947,7 +949,9 @@ class CollaborationBridgeLifecycleService:
         # would otherwise be stored, reported as success, and only surface later
         # as an unrelated-looking error. Failing here also avoids leaving an
         # orphan client identity behind for a bridge that was never viable.
-        await adapter_cls.verify_credentials(connection_config)
+        await adapter_cls.verify_connection(
+            connection_config, self._config.outbound_policy
+        )
 
         workspace_consumer_record = await self._client_lifecycle.create_client(
             client_type="bridge",

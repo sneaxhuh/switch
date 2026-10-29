@@ -102,6 +102,7 @@ export const ConnectMessagingAppModal = observer(function ConnectMessagingAppMod
     app: ConnectedApp;
     platform: string;
     webhookUrl: string | null;
+    setupValues?: Record<string, string>;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -252,6 +253,7 @@ export const ConnectMessagingAppModal = observer(function ConnectMessagingAppMod
           app,
           platform: selectedType.key,
           webhookUrl: result.bridge.webhookUrl,
+          setupValues: result.bridge.setupValues,
         });
         return;
       }
@@ -304,6 +306,7 @@ export const ConnectMessagingAppModal = observer(function ConnectMessagingAppMod
             <WebhookAddressStep
               platform={awaitingWebhookSetup.platform}
               webhookUrl={awaitingWebhookSetup.webhookUrl}
+              setupValues={awaitingWebhookSetup.setupValues}
             />
           </DialogContentArea>
           <DialogFooter>
