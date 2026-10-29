@@ -786,6 +786,12 @@ class AgentCore:
     ) -> None:
         self._agent_profile_listener = listener
 
+    async def agent_profile_changed(self, agent_id: str) -> None:
+        """Tell whoever follows agents' faces that this one's icon or
+        display name changed, after a change made outside
+        `update_agent_detail`."""
+        await self._agent_profile_changed(agent_id)
+
     async def _agent_profile_changed(self, agent_id: str) -> None:
         if self._agent_profile_listener is not None:
             await self._agent_profile_listener(require_tenant_id(), agent_id)
@@ -4168,12 +4174,6 @@ class AgentCore:
         # count rose anyway.
         await self.room_service.set_room_archived(room_id, archived)
         return await self.get_room_detail(agent_id, room_id)
-
-    async def list_all_agents(self, agent_id: str) -> list[Agent]:
-        """List all agents (moderation only)."""
-        async with self.session_factory() as session:
-            agents = await self.agent_store.get_all(session)
-        return agents
 
     async def pre_tool_call(
         self,
